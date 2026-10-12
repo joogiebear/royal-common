@@ -8,12 +8,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -74,7 +74,10 @@ public final class VersionPoller<K> {
     private final DbExecutor db;
     private final Query<K> query;
     private final Consumer<Set<K>> onChanged;
-    private final Map<K, Long> lastSeen = new ConcurrentHashMap<>();
+    private final Object lock = new Object();
+    // guarded by lock; each running poll holds the keys forgotten since it took its snapshot
+    private final Map<K, Long> lastSeen = new HashMap<>();
+    private final List<Set<K>> forgottenDuringPolls = new ArrayList<>();
     private final AtomicBoolean polling = new AtomicBoolean();
     private BukkitTask task;
 
@@ -90,12 +93,19 @@ public final class VersionPoller<K> {
 
     /** Records a version this server already has, after loading the row or writing it. */
     public void seen(K key, long version) {
-        lastSeen.merge(key, version, Math::max);
+        synchronized (lock) {
+            lastSeen.merge(key, version, Math::max);
+        }
     }
 
-    /** Stops tracking a key, e.g. when its player leaves. */
+    /** Stops tracking a key, e.g. when its player leaves. A poll already running will not track it again. */
     public void forget(K key) {
-        lastSeen.remove(key);
+        synchronized (lock) {
+            lastSeen.remove(key);
+            for (Set<K> forgotten : forgottenDuringPolls) {
+                forgotten.add(key);
+            }
+        }
     }
 
     /**
@@ -104,7 +114,18 @@ public final class VersionPoller<K> {
      */
     public CompletableFuture<Set<K>> poll(Collection<K> keys) {
         List<K> snapshot = List.copyOf(keys);
-        return db.submit("version poll", () -> changedSince(snapshot)).thenApply(changed -> {
+        Set<K> forgotten = new HashSet<>();
+        synchronized (lock) {
+            forgottenDuringPolls.add(forgotten);
+        }
+        CompletableFuture<Set<K>> result = db.submit("version poll", () -> changedSince(snapshot, forgotten));
+        result.whenComplete((changed, failure) -> {
+            synchronized (lock) {
+                // by identity: two polls' sets can be equal
+                forgottenDuringPolls.removeIf(set -> set == forgotten);
+            }
+        });
+        return result.thenApply(changed -> {
             if (!changed.isEmpty()) {
                 db.mainThread().execute(() -> onChanged.accept(changed));
             }
@@ -112,7 +133,7 @@ public final class VersionPoller<K> {
         });
     }
 
-    private Set<K> changedSince(List<K> keys) throws SQLException {
+    private Set<K> changedSince(List<K> keys, Set<K> forgotten) throws SQLException {
         if (keys.isEmpty()) {
             return Set.of();
         }
@@ -121,13 +142,18 @@ public final class VersionPoller<K> {
             current = query.versions(connection, keys);
         }
         Set<K> changed = new LinkedHashSet<>();
-        current.forEach((key, version) -> {
-            Long before = lastSeen.get(key);
-            if (before != null && version > before) {
-                changed.add(key);
-            }
-            seen(key, version);
-        });
+        synchronized (lock) {
+            current.forEach((key, version) -> {
+                if (forgotten.contains(key)) {
+                    return;
+                }
+                Long before = lastSeen.get(key);
+                if (before != null && version > before) {
+                    changed.add(key);
+                }
+                seen(key, version);
+            });
+        }
         return Set.copyOf(changed);
     }
 
