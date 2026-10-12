@@ -1,0 +1,6 @@
+# JitPack builds a tag the first time a plugin asks for com.github.joogiebear:royal-common:<tag>.
+# JDK 25 is needed to read paper-api 26.2; the classes are still compiled for Java 21.
+jdk:
+  - openjdk25
+install:
+  - mvn -B install -DskipTests
