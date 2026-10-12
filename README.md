@@ -52,6 +52,21 @@ Shade and relocate it. Replace `royalbank` with the plugin's own package name.
 
 The library only needs the JDK and the Bukkit API at runtime. JDBC drivers and the connection pool stay the plugin's own (Paper's library loader in the plugins today).
 
+## What's in it
+
+`com.mystipixel.royalcommon.storage`, for plugins that let several servers share one MySQL database:
+
+- `TxRunner`, `Tx`, `Dialect`: one transaction per unit of work, row locks in a stable order, retry on deadlock or busy database.
+- `DbExecutor`, `MainThread`: the plugin's single ordered database thread and the hand-back to the main thread.
+- `BusyGuard`: one in-flight action per player.
+- `VersionPoller`: notices rows another server changed.
+- `PlayerHandoff`: waits for the previous server's quit save before loading a player.
+- `Lease`: one server at a time runs a network-wide job.
+- `SchemaVersion`: migrations that are safe when servers start together.
+- `ServerId`: the id each server uses in leases and hand-off rows.
+
+All of them work on SQLite too, where there is only one server.
+
 ## Building
 
 Needs JDK 25 (paper-api 26.2 is compiled for it). The output targets Java 21.
