@@ -117,4 +117,4 @@ Do not report style nitpicks as performance issues. Do not report something as a
 - No player-facing text lives here. Log lines and exception messages are for admins; plugins turn results into their own messages.
 - The public API is used by many plugins. Prefer adding over changing; a breaking change needs a note in the PR and a follow-up in each consumer.
 - "Checked on a Paper server" for a change here means checked through a plugin that shades it. Say which one in the PR.
-- Releases are tags (`YEAR.WEEK.PATCH`) made by the Release workflow; JitPack builds the tag the first time a plugin asks for it.
+- Releases are tags (`YEAR.WEEK.PATCH`) made by the Release workflow, which also publishes the jar to the `maven` branch that plugins download it from.

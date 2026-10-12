@@ -1,7 +1,8 @@
 name: Release
 
-# Releases only when started manually from GitHub Actions. The tag it pushes is
-# what JitPack builds for com.github.joogiebear:royal-common:<tag>.
+# Releases only when started manually from GitHub Actions. Besides the tag and the
+# GitHub release, it publishes the jar to the maven branch, which plugins use as a
+# Maven repository: https://raw.githubusercontent.com/joogiebear/royal-common/maven
 on:
   workflow_dispatch:
     inputs:
@@ -88,6 +89,24 @@ jobs:
           git tag "${{ steps.prep.outputs.version }}"
           git push origin HEAD:${{ github.ref_name }}
           git push origin "${{ steps.prep.outputs.version }}"
+
+      - name: Publish to the maven branch
+        if: steps.prep.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          REPO_DIR="$RUNNER_TEMP/maven"
+          if git ls-remote --exit-code --heads origin maven >/dev/null; then
+            git fetch origin maven
+            git worktree add -B maven "$REPO_DIR" origin/maven
+          else
+            git worktree add --orphan -b maven "$REPO_DIR"
+          fi
+          # deploying straight into the branch keeps maven-metadata.xml listing every version
+          mvn -B deploy -DskipTests -DaltDeploymentRepository=local::file://"$REPO_DIR"
+          cd "$REPO_DIR"
+          git add -A
+          git commit -m "chore(release): publish ${{ steps.prep.outputs.version }}"
+          git push origin maven
 
       - name: GitHub Release
         if: steps.prep.outputs.release == 'true'

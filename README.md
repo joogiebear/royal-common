@@ -6,20 +6,20 @@ It is a library, not a plugin. Do not put it in a server's `plugins` folder. Eac
 
 ## Using it in a plugin
 
-Add the JitPack repository and the dependency. Use a release tag (for example `2026.41.0`) as the version.
+Add the repository and the dependency. Use a release version (for example `2026.42.0`, see the releases page) as the version. The repository is the `maven` branch of this repo, so no account or token is needed.
 
 ```xml
 <repositories>
     <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
+        <id>royal-common</id>
+        <url>https://raw.githubusercontent.com/joogiebear/royal-common/maven</url>
     </repository>
 </repositories>
 
 <dependency>
     <groupId>com.github.joogiebear</groupId>
     <artifactId>royal-common</artifactId>
-    <version>TAG</version>
+    <version>VERSION</version>
 </dependency>
 ```
 
@@ -77,4 +77,4 @@ mvn -B verify
 
 ## Releases
 
-Run the Release workflow from GitHub Actions. It tags `YEAR.WEEK.PATCH`, writes `CHANGELOG.md` and creates a GitHub release. JitPack builds the tag the first time a plugin asks for it.
+Run the Release workflow from GitHub Actions. It tags `YEAR.WEEK.PATCH`, writes `CHANGELOG.md`, publishes the jar to the `maven` branch and creates a GitHub release.
