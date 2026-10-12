@@ -1,6 +1,5 @@
 # JitPack builds a tag the first time a plugin asks for com.github.joogiebear:royal-common:<tag>.
 # JDK 25 is needed to read paper-api 26.2; the classes are still compiled for Java 21.
-jdk:
-  - openjdk25
+# JitPack has no JDK 25 image yet, so the install step fetches Temurin 25 itself.
 install:
-  - mvn -B install -DskipTests
+  - curl -sSL -o /tmp/jdk25.tar.gz https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse && mkdir -p /tmp/jdk25 && tar -xzf /tmp/jdk25.tar.gz -C /tmp/jdk25 --strip-components=1 && export JAVA_HOME=/tmp/jdk25 && export PATH=/tmp/jdk25/bin:$PATH && java -version && mvn -B install -DskipTests
