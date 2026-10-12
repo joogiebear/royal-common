@@ -14,7 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -62,6 +64,22 @@ class VersionPollerTest {
 
     private Set<UUID> poll(UUID... keys) throws Exception {
         return poller.poll(List.of(keys)).get(5, TimeUnit.SECONDS);
+    }
+
+    // the first query waits for release after counting down started; later ones run straight through
+    private static VersionPoller.Query<UUID> heldOnce(CountDownLatch started, CountDownLatch release) {
+        VersionPoller.Query<UUID> columns = VersionPoller.byColumn("accounts", "uuid", "version", UUID::fromString);
+        return (connection, keys) -> {
+            if (started.getCount() > 0) {
+                started.countDown();
+                try {
+                    assertTrue(release.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return columns.versions(connection, keys);
+        };
     }
 
     @Test
@@ -124,5 +142,48 @@ class VersionPollerTest {
         write(keys.get(1202), 2);
         Set<UUID> changed = poller.poll(keys).get(10, TimeUnit.SECONDS);
         assertEquals(Set.of(keys.get(0), keys.get(1202)), changed);
+    }
+
+    @Test
+    void keyForgottenDuringAPollIsNotTrackedAgain() throws Exception {
+        CountDownLatch queryStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        VersionPoller<UUID> slow = new VersionPoller<>(pool, executor,
+                heldOnce(queryStarted, release), callbacks::add);
+
+        UUID alice = UUID.randomUUID();
+        write(alice, 1);
+        slow.seen(alice, 1);
+        CompletableFuture<Set<UUID>> inFlight = slow.poll(List.of(alice));
+        assertTrue(queryStarted.await(5, TimeUnit.SECONDS));
+        slow.forget(alice); // player left while the query ran
+        release.countDown();
+        assertEquals(Set.of(), inFlight.get(5, TimeUnit.SECONDS));
+
+        // back on this server later: a fresh first sight, not a change against the old baseline
+        write(alice, 2);
+        assertEquals(Set.of(), slow.poll(List.of(alice)).get(5, TimeUnit.SECONDS));
+        assertTrue(callbacks.isEmpty());
+    }
+
+    @Test
+    void lowerBaselineSetDuringAPollIsKept() throws Exception {
+        CountDownLatch queryStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        VersionPoller<UUID> slow = new VersionPoller<>(pool, executor,
+                heldOnce(queryStarted, release), callbacks::add);
+
+        UUID alice = UUID.randomUUID();
+        write(alice, 2);
+        slow.seen(alice, 1);
+        CompletableFuture<Set<UUID>> inFlight = slow.poll(List.of(alice));
+        assertTrue(queryStarted.await(5, TimeUnit.SECONDS));
+        // a failed reload puts the cached version back so the next poll reports the change again
+        slow.forget(alice);
+        slow.seen(alice, 1);
+        release.countDown();
+        inFlight.get(5, TimeUnit.SECONDS);
+
+        assertEquals(Set.of(alice), slow.poll(List.of(alice)).get(5, TimeUnit.SECONDS));
     }
 }
