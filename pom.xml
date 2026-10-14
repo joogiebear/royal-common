@@ -6,7 +6,7 @@
     <groupId>com.github.joogiebear</groupId>
     <artifactId>royal-common</artifactId>
     <!-- the Release workflow sets the real YEAR.WEEK.PATCH version on the tag -->
-    <version>2026.41.1</version>
+    <version>2026.42.0</version>
     <packaging>jar</packaging>
 
     <name>royal-common</name>
