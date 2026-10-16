@@ -78,6 +78,15 @@ jobs:
         if: steps.prep.outputs.release == 'true'
         run: mvn -B verify
 
+      - name: Locate jar
+        if: steps.prep.outputs.release == 'true'
+        id: jar
+        run: |
+          set -euo pipefail
+          JAR="target/royal-common-${{ steps.prep.outputs.version }}.jar"
+          test -f "$JAR"
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+
       - name: Commit bump + changelog, tag
         if: steps.prep.outputs.release == 'true'
         run: |
@@ -114,5 +123,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.prep.outputs.version }}" \
+            "${{ steps.jar.outputs.path }}" \
             --title "${{ steps.prep.outputs.version }}" \
             --notes-file RELEASE_NOTES.md
